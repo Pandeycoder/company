@@ -2,13 +2,6 @@ import React, { useState, useEffect } from 'react'
 
 const API_BASE_URL = 'http://localhost:8089/api/companies'
 
-// Mock data for demonstration
-const MOCK_COMPANIES = [
-  { id: 1, name: 'Tech Corp', email: 'contact@techcorp.com', phone: '123-456-7890', address: '123 Tech Street' },
-  { id: 2, name: 'Design Studio', email: 'hello@designstudio.com', phone: '098-765-4321', address: '456 Creative Ave' },
-  { id: 3, name: 'Marketing Plus', email: 'info@marketingplus.com', phone: '555-123-4567', address: '789 Business Blvd' }
-]
-
 function App() {
   const [companies, setCompanies] = useState([])
   const [formData, setFormData] = useState({
@@ -21,25 +14,20 @@ function App() {
   const [searchTerm, setSearchTerm] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [useMockData, setUseMockData] = useState(false)
-  const [nextId, setNextId] = useState(4)
+  const [pagination, setPagination] = useState({
+    currentPage: 0,
+    totalPages: 0,
+    totalElements: 0,
+    size: 10
+  })
 
-  // Fetch all companies
-  const fetchCompanies = async () => {
+  // Fetch all companies with pagination
+  const fetchCompanies = async (page = 0, size = 10) => {
     setLoading(true)
     setError('')
 
-    if (useMockData) {
-      // Use mock data
-      setTimeout(() => {
-        setCompanies([...MOCK_COMPANIES])
-        setLoading(false)
-      }, 500)
-      return
-    }
-
     try {
-      const response = await fetch(API_BASE_URL)
+      const response = await fetch(`${API_BASE_URL}?page=${page}&size=${size}`)
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`)
       }
@@ -51,33 +39,35 @@ function App() {
 
       const data = await response.json()
 
-      // Ensure data is an array
-      if (Array.isArray(data)) {
-        setCompanies(data)
-      } else if (data && Array.isArray(data.companies)) {
-        // Handle case where API returns { companies: [...] }
-        setCompanies(data.companies)
+      // Handle Spring Boot Page response
+      console.log('API Response:', data)
+
+      if (data.content && Array.isArray(data.content)) {
+        setCompanies(data.content)
+        setPagination({
+          currentPage: data.number || 0,
+          totalPages: data.totalPages || 0,
+          totalElements: data.totalElements || 0,
+          size: data.size || 10
+        })
       } else {
-        console.warn('API returned non-array data:', data)
+        console.warn('API returned unexpected data structure:', data)
         setCompanies([])
         setError('Invalid data format received from server')
       }
     } catch (error) {
       console.error('Error fetching companies:', error)
-      setError(`Failed to fetch companies: ${error.message}. Using mock data instead.`)
-      setUseMockData(true)
-      setCompanies([...MOCK_COMPANIES])
+      setError(`Failed to fetch companies: ${error.message}`)
+      setCompanies([])
     } finally {
       setLoading(false)
     }
   }
 
-  // Load companies on component mount
   useEffect(() => {
     fetchCompanies()
   }, [])
 
-  // Handle form input changes
   const handleInputChange = (e) => {
     setFormData({
       ...formData,
@@ -85,82 +75,70 @@ function App() {
     })
   }
 
-  // Create or update company
   const handleSubmit = async (e) => {
-    e.preventDefault()
-    setLoading(true)
-    setError('')
+    if (e) e.preventDefault()
 
-    if (useMockData) {
-      // Mock data operations
-      setTimeout(() => {
-        if (editingId) {
-          // Update existing company
-          setCompanies(prev => prev.map(company =>
-            company.id === editingId ? { ...formData, id: editingId } : company
-          ))
-          setEditingId(null)
-        } else {
-          // Create new company
-          const newCompany = { ...formData, id: nextId }
-          setCompanies(prev => [...prev, newCompany])
-          setNextId(prev => prev + 1)
-        }
-
-        // Reset form
-        setFormData({ name: '', email: '', phone: '', address: '' })
-        setLoading(false)
-      }, 300)
+    // Validate required fields
+    if (!formData.name.trim()) {
+      setError('Company name is required')
+      return
+    }
+    if (!formData.email.trim()) {
+      setError('Email is required')
       return
     }
 
+    setLoading(true)
+    setError('')
+
     try {
       let response
+      let url = API_BASE_URL
+      let method = 'POST'
+
       if (editingId) {
         // Update existing company
-        response = await fetch(`${API_BASE_URL}/${editingId}`, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(formData)
-        })
-        setEditingId(null)
-      } else {
-        // Create new company
-        response = await fetch(API_BASE_URL, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(formData)
-        })
+        url = `${API_BASE_URL}/${editingId}`
+        method = 'PUT'
       }
 
+      console.log(`${method} request to:`, url)
+      console.log('Request body:', formData)
+
+      response = await fetch(url, {
+        method: method,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(formData)
+      })
+
+      console.log('Response status:', response.status)
+      console.log('Response ok:', response.ok)
+
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
+        const errorText = await response.text()
+        console.error('Error response:', errorText)
+        throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`)
       }
+
+      const result = await response.json()
+      console.log('Success response:', result)
 
       // Reset form and refresh list
       setFormData({ name: '', email: '', phone: '', address: '' })
-      await fetchCompanies()
+      setEditingId(null)
+
+      // Refresh the company list
+      await fetchCompanies(0, pagination.size)
+
+      // Show success message
+      const successMessage = editingId ? 'Company updated successfully!' : 'Company added successfully!'
+      console.log(successMessage)
+
     } catch (error) {
       console.error('Error saving company:', error)
-      setError(`Failed to save company: ${error.message}. Switching to mock data mode.`)
-      setUseMockData(true)
-
-      // Perform operation with mock data
-      if (editingId) {
-        setCompanies(prev => prev.map(company =>
-          company.id === editingId ? { ...formData, id: editingId } : company
-        ))
-        setEditingId(null)
-      } else {
-        const newCompany = { ...formData, id: nextId }
-        setCompanies(prev => [...prev, newCompany])
-        setNextId(prev => prev + 1)
-      }
-      setFormData({ name: '', email: '', phone: '', address: '' })
+      setError(`Failed to save company: ${error.message}`)
     } finally {
       setLoading(false)
     }
@@ -172,30 +150,33 @@ function App() {
       setLoading(true)
       setError('')
 
-      if (useMockData) {
-        // Mock data operation
-        setTimeout(() => {
-          setCompanies(prev => prev.filter(company => company.id !== id))
-          setLoading(false)
-        }, 300)
-        return
-      }
-
       try {
+        console.log('Deleting company with ID:', id)
+
         const response = await fetch(`${API_BASE_URL}/${id}`, {
-          method: 'DELETE'
+          method: 'DELETE',
+          headers: {
+            'Content-Type': 'application/json',
+          }
         })
 
+        console.log('Delete response status:', response.status)
+        console.log('Delete response ok:', response.ok)
+
         if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`)
+          const errorText = await response.text()
+          console.error('Delete error response:', errorText)
+          throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`)
         }
 
-        await fetchCompanies()
+        console.log('Company deleted successfully')
+
+        // Refresh the company list
+        await fetchCompanies(pagination.currentPage, pagination.size)
+
       } catch (error) {
         console.error('Error deleting company:', error)
-        setError(`Failed to delete company: ${error.message}. Switching to mock data mode.`)
-        setUseMockData(true)
-        setCompanies(prev => prev.filter(company => company.id !== id))
+        setError(`Failed to delete company: ${error.message}`)
       } finally {
         setLoading(false)
       }
@@ -220,27 +201,13 @@ function App() {
   }
 
   // Search companies
-  const handleSearch = async () => {
+  const handleSearch = async (page = 0) => {
     if (searchTerm.trim()) {
       setLoading(true)
       setError('')
 
-      if (useMockData) {
-        // Mock search operation
-        setTimeout(() => {
-          const filtered = MOCK_COMPANIES.concat(
-            companies.filter(c => !MOCK_COMPANIES.find(m => m.id === c.id))
-          ).filter(company =>
-            company.name.toLowerCase().includes(searchTerm.toLowerCase())
-          )
-          setCompanies(filtered)
-          setLoading(false)
-        }, 300)
-        return
-      }
-
       try {
-        const response = await fetch(`${API_BASE_URL}/search?name=${encodeURIComponent(searchTerm)}`)
+        const response = await fetch(`${API_BASE_URL}/search?name=${encodeURIComponent(searchTerm)}&page=${page}&size=${pagination.size}`)
         if (!response.ok) {
           throw new Error(`HTTP error! status: ${response.status}`)
         }
@@ -252,24 +219,24 @@ function App() {
 
         const data = await response.json()
 
-        // Ensure data is an array
-        if (Array.isArray(data)) {
-          setCompanies(data)
-        } else if (data && Array.isArray(data.companies)) {
-          setCompanies(data.companies)
+        // Handle paginated search results
+        if (data.content && Array.isArray(data.content)) {
+          setCompanies(data.content)
+          setPagination({
+            currentPage: data.number || 0,
+            totalPages: data.totalPages || 0,
+            totalElements: data.totalElements || 0,
+            size: data.size || 10
+          })
         } else {
-          console.warn('Search API returned non-array data:', data)
+          console.warn('Search API returned unexpected data structure:', data)
           setCompanies([])
           setError('Invalid search results format')
         }
       } catch (error) {
         console.error('Error searching companies:', error)
-        setError(`Failed to search companies: ${error.message}. Using mock data instead.`)
-        setUseMockData(true)
-        const filtered = MOCK_COMPANIES.filter(company =>
-          company.name.toLowerCase().includes(searchTerm.toLowerCase())
-        )
-        setCompanies(filtered)
+        setError(`Failed to search companies: ${error.message}`)
+        setCompanies([])
       } finally {
         setLoading(false)
       }
@@ -278,33 +245,41 @@ function App() {
     }
   }
 
-  return (
-    <div style={{ padding: '20px', fontFamily: 'Arial, sans-serif' }}>
-      <h1>Company Management System</h1>
+  // Pagination handlers
+  const handlePageChange = (newPage) => {
+    if (searchTerm.trim()) {
+      handleSearch(newPage)
+    } else {
+      fetchCompanies(newPage, pagination.size)
+    }
+  }
 
-      {useMockData && (
-        <div style={{
-          backgroundColor: '#fff3cd',
-          color: '#856404',
-          padding: '10px',
-          marginBottom: '20px',
-          borderRadius: '4px',
-          border: '1px solid #ffeaa7'
-        }}>
-          <strong>Demo Mode:</strong> API server not available. Using mock data for demonstration.
-        </div>
-      )}
+  const handlePageSizeChange = (newSize) => {
+    const newPagination = { ...pagination, size: newSize }
+    setPagination(newPagination)
+
+    if (searchTerm.trim()) {
+      handleSearch(0)
+    } else {
+      fetchCompanies(0, newSize)
+    }
+  }
+
+  return (
+    <div style={{ padding: '20px', fontFamily: 'Arial, sans-serif', maxWidth: '1200px', margin: '0 auto' }}>
+      <h1 style={{ textAlign: 'center', color: '#333', marginBottom: '30px' }}>Company Management System</h1>
 
       {error && (
         <div style={{
           backgroundColor: '#ffebee',
           color: '#c62828',
-          padding: '10px',
+          padding: '15px',
           marginBottom: '20px',
-          borderRadius: '4px',
-          border: '1px solid #ef5350'
+          borderRadius: '8px',
+          border: '1px solid #ef5350',
+          boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
         }}>
-          {error}
+          <strong>Error:</strong> {error}
         </div>
       )}
 
@@ -312,90 +287,154 @@ function App() {
         <div style={{
           backgroundColor: '#e3f2fd',
           color: '#1976d2',
-          padding: '10px',
+          padding: '15px',
           marginBottom: '20px',
-          borderRadius: '4px',
-          border: '1px solid #42a5f5'
+          borderRadius: '8px',
+          border: '1px solid #42a5f5',
+          textAlign: 'center',
+          boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
         }}>
+          <div style={{ display: 'inline-block', marginRight: '10px' }}>⏳</div>
           Loading...
         </div>
       )}
 
-      <div style={{ marginBottom: '20px', padding: '15px', backgroundColor: '#f5f5f5', borderRadius: '4px' }}>
-        <input
-          type="text"
-          placeholder="Search companies by name..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          style={{
-            padding: '8px',
-            marginRight: '10px',
-            border: '1px solid #ddd',
-            borderRadius: '4px',
-            width: '300px'
-          }}
-          onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
-        />
-        <button
-          onClick={handleSearch}
-          disabled={loading}
-          style={{
-            padding: '8px 16px',
-            marginRight: '10px',
-            backgroundColor: '#2196f3',
-            color: 'white',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: loading ? 'not-allowed' : 'pointer'
-          }}
-        >
-          Search
-        </button>
-        <button
-          onClick={() => { setSearchTerm(''); fetchCompanies() }}
-          disabled={loading}
-          style={{
-            padding: '8px 16px',
-            backgroundColor: '#757575',
-            color: 'white',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: loading ? 'not-allowed' : 'pointer'
-          }}
-        >
-          Show All
-        </button>
+      {/* Search Section */}
+      <div style={{
+        marginBottom: '30px',
+        padding: '20px',
+        backgroundColor: '#f8f9fa',
+        borderRadius: '12px',
+        boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+      }}>
+        <h3 style={{ marginTop: '0', color: '#333' }}>Search Companies</h3>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'center' }}>
+          <input
+            type="text"
+            placeholder="Search companies by name..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            style={{
+              padding: '12px',
+              border: '2px solid #ddd',
+              borderRadius: '6px',
+              minWidth: '300px',
+              fontSize: '14px',
+              transition: 'border-color 0.3s'
+            }}
+            onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
+            onFocus={(e) => e.target.style.borderColor = '#2196f3'}
+            onBlur={(e) => e.target.style.borderColor = '#ddd'}
+          />
+          <button
+            onClick={() => handleSearch()}
+            disabled={loading}
+            style={{
+              padding: '12px 24px',
+              backgroundColor: '#2196f3',
+              color: 'white',
+              border: 'none',
+              borderRadius: '6px',
+              cursor: loading ? 'not-allowed' : 'pointer',
+              fontSize: '14px',
+              fontWeight: 'bold',
+              transition: 'background-color 0.3s'
+            }}
+            onMouseOver={(e) => !loading && (e.target.style.backgroundColor = '#1976d2')}
+            onMouseOut={(e) => !loading && (e.target.style.backgroundColor = '#2196f3')}
+          >
+            🔍 Search
+          </button>
+          <button
+            onClick={() => { setSearchTerm(''); fetchCompanies() }}
+            disabled={loading}
+            style={{
+              padding: '12px 24px',
+              backgroundColor: '#757575',
+              color: 'white',
+              border: 'none',
+              borderRadius: '6px',
+              cursor: loading ? 'not-allowed' : 'pointer',
+              fontSize: '14px',
+              fontWeight: 'bold',
+              transition: 'background-color 0.3s'
+            }}
+            onMouseOver={(e) => !loading && (e.target.style.backgroundColor = '#616161')}
+            onMouseOut={(e) => !loading && (e.target.style.backgroundColor = '#757575')}
+          >
+            📋 Show All
+          </button>
+        </div>
       </div>
 
-      <div style={{ marginBottom: '20px', padding: '15px', backgroundColor: '#f9f9f9', borderRadius: '4px' }}>
-        <h2>{editingId ? 'Edit Company' : 'Add New Company'}</h2>
-        <div onSubmit={handleSubmit}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '10px', marginBottom: '15px' }}>
+      {/* Form Section */}
+      <div style={{
+        marginBottom: '30px',
+        padding: '25px',
+        backgroundColor: '#ffffff',
+        borderRadius: '12px',
+        boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+        border: '1px solid #e0e0e0'
+      }}>
+        <h2 style={{ marginTop: '0', color: '#333' }}>
+          {editingId ? '✏️ Edit Company' : '➕ Add New Company'}
+        </h2>
+        <div>
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+            gap: '15px',
+            marginBottom: '20px'
+          }}>
             <input
               type="text"
               name="name"
-              placeholder="Company Name"
+              placeholder="* Company Name"
               value={formData.name}
               onChange={handleInputChange}
               required
-              style={{ padding: '8px', border: '1px solid #ddd', borderRadius: '4px' }}
+              style={{
+                padding: '12px',
+                border: '2px solid #ddd',
+                borderRadius: '6px',
+                fontSize: '14px',
+                transition: 'border-color 0.3s'
+              }}
+              onFocus={(e) => e.target.style.borderColor = '#4caf50'}
+              onBlur={(e) => e.target.style.borderColor = '#ddd'}
             />
             <input
               type="email"
               name="email"
-              placeholder="Email"
+              placeholder="* Email Address"
               value={formData.email}
               onChange={handleInputChange}
               required
-              style={{ padding: '8px', border: '1px solid #ddd', borderRadius: '4px' }}
+              style={{
+                padding: '12px',
+                border: '2px solid #ddd',
+                borderRadius: '6px',
+                fontSize: '14px',
+                transition: 'border-color 0.3s'
+              }}
+              onFocus={(e) => e.target.style.borderColor = '#4caf50'}
+              onBlur={(e) => e.target.style.borderColor = '#ddd'}
             />
             <input
               type="text"
               name="phone"
-              placeholder="Phone"
+              placeholder="Phone Number"
               value={formData.phone}
               onChange={handleInputChange}
-              style={{ padding: '8px', border: '1px solid #ddd', borderRadius: '4px' }}
+              style={{
+                padding: '12px',
+                border: '2px solid #ddd',
+                borderRadius: '6px',
+                fontSize: '14px',
+                transition: 'border-color 0.3s'
+              }}
+              onFocus={(e) => e.target.style.borderColor = '#4caf50'}
+              onBlur={(e) => e.target.style.borderColor = '#ddd'}
             />
             <input
               type="text"
@@ -403,107 +442,285 @@ function App() {
               placeholder="Address"
               value={formData.address}
               onChange={handleInputChange}
-              style={{ padding: '8px', border: '1px solid #ddd', borderRadius: '4px' }}
+              style={{
+                padding: '12px',
+                border: '2px solid #ddd',
+                borderRadius: '6px',
+                fontSize: '14px',
+                transition: 'border-color 0.3s'
+              }}
+              onFocus={(e) => e.target.style.borderColor = '#4caf50'}
+              onBlur={(e) => e.target.style.borderColor = '#ddd'}
             />
           </div>
-          <div>
+          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
             <button
+              type="button"
               onClick={handleSubmit}
-              disabled={loading}
+              disabled={loading || !formData.name.trim() || !formData.email.trim()}
               style={{
-                padding: '10px 20px',
-                marginRight: '10px',
-                backgroundColor: '#4caf50',
+                padding: '12px 24px',
+                backgroundColor: (loading || !formData.name.trim() || !formData.email.trim()) ? '#ccc' : '#4caf50',
                 color: 'white',
                 border: 'none',
-                borderRadius: '4px',
-                cursor: loading ? 'not-allowed' : 'pointer'
+                borderRadius: '6px',
+                cursor: (loading || !formData.name.trim() || !formData.email.trim()) ? 'not-allowed' : 'pointer',
+                fontSize: '14px',
+                fontWeight: 'bold',
+                transition: 'background-color 0.3s'
               }}
+              onMouseOver={(e) => !loading && formData.name.trim() && formData.email.trim() && (e.target.style.backgroundColor = '#388e3c')}
+              onMouseOut={(e) => !loading && formData.name.trim() && formData.email.trim() && (e.target.style.backgroundColor = '#4caf50')}
             >
-              {editingId ? 'Update Company' : 'Add Company'}
+              {editingId ? '💾 Update Company' : '➕ Add Company'}
             </button>
             {editingId && (
               <button
+                type="button"
                 onClick={handleCancelEdit}
                 style={{
-                  padding: '10px 20px',
+                  padding: '12px 24px',
                   backgroundColor: '#f44336',
                   color: 'white',
                   border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer'
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: 'bold',
+                  transition: 'background-color 0.3s'
                 }}
+                onMouseOver={(e) => e.target.style.backgroundColor = '#d32f2f'}
+                onMouseOut={(e) => e.target.style.backgroundColor = '#f44336'}
               >
-                Cancel
+                ❌ Cancel
               </button>
             )}
           </div>
         </div>
       </div>
 
-      <div>
-        <h2>Companies List ({Array.isArray(companies) ? companies.length : 0})</h2>
-        {!Array.isArray(companies) || companies.length === 0 ? (
-          <p style={{ textAlign: 'center', color: '#666', padding: '20px' }}>
-            No companies found.
-          </p>
-        ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', backgroundColor: 'white' }}>
-              <thead>
-                <tr style={{ backgroundColor: '#f0f0f0' }}>
-                  <th style={{ padding: '12px', textAlign: 'left', borderBottom: '2px solid #ddd' }}>ID</th>
-                  <th style={{ padding: '12px', textAlign: 'left', borderBottom: '2px solid #ddd' }}>Name</th>
-                  <th style={{ padding: '12px', textAlign: 'left', borderBottom: '2px solid #ddd' }}>Email</th>
-                  <th style={{ padding: '12px', textAlign: 'left', borderBottom: '2px solid #ddd' }}>Phone</th>
-                  <th style={{ padding: '12px', textAlign: 'left', borderBottom: '2px solid #ddd' }}>Address</th>
-                  <th style={{ padding: '12px', textAlign: 'left', borderBottom: '2px solid #ddd' }}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {companies.map((company) => (
-                  <tr key={company.id} style={{ borderBottom: '1px solid #eee' }}>
-                    <td style={{ padding: '12px' }}>{company.id}</td>
-                    <td style={{ padding: '12px' }}>{company.name}</td>
-                    <td style={{ padding: '12px' }}>{company.email}</td>
-                    <td style={{ padding: '12px' }}>{company.phone}</td>
-                    <td style={{ padding: '12px' }}>{company.address}</td>
-                    <td style={{ padding: '12px' }}>
-                      <button
-                        onClick={() => handleEdit(company)}
-                        disabled={loading}
-                        style={{
-                          padding: '6px 12px',
-                          marginRight: '5px',
-                          backgroundColor: '#ff9800',
-                          color: 'white',
-                          border: 'none',
-                          borderRadius: '4px',
-                          cursor: loading ? 'not-allowed' : 'pointer'
-                        }}
-                      >
-                        Edit
-                      </button>
-                      <button
-                        onClick={() => handleDelete(company.id)}
-                        disabled={loading}
-                        style={{
-                          padding: '6px 12px',
-                          backgroundColor: '#f44336',
-                          color: 'white',
-                          border: 'none',
-                          borderRadius: '4px',
-                          cursor: loading ? 'not-allowed' : 'pointer'
-                        }}
-                      >
-                        Delete
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+      {/* Results Section */}
+      <div style={{
+        backgroundColor: '#ffffff',
+        borderRadius: '12px',
+        boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+        border: '1px solid #e0e0e0',
+        overflow: 'hidden'
+      }}>
+        {/* Header with pagination info */}
+        <div style={{
+          padding: '20px',
+          backgroundColor: '#f8f9fa',
+          borderBottom: '1px solid #e0e0e0',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: '10px'
+        }}>
+          <h2 style={{ margin: '0', color: '#333' }}>
+            📊 Companies ({pagination.totalElements} total)
+          </h2>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '15px', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '14px', color: '#666' }}>
+              Page {pagination.currentPage + 1} of {pagination.totalPages}
+            </span>
+            <select
+              value={pagination.size}
+              onChange={(e) => handlePageSizeChange(parseInt(e.target.value))}
+              style={{
+                padding: '6px 12px',
+                border: '1px solid #ddd',
+                borderRadius: '4px',
+                fontSize: '14px'
+              }}
+            >
+              <option value={5}>5 per page</option>
+              <option value={10}>10 per page</option>
+              <option value={20}>20 per page</option>
+              <option value={50}>50 per page</option>
+            </select>
           </div>
+        </div>
+
+        {!Array.isArray(companies) || companies.length === 0 ? (
+          <div style={{
+            textAlign: 'center',
+            color: '#666',
+            padding: '60px 20px',
+            fontSize: '16px'
+          }}>
+            {searchTerm ? '🔍 No companies found matching your search.' : '📝 No companies found. Add your first company above!'}
+          </div>
+        ) : (
+          <>
+            {/* Table */}
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ backgroundColor: '#f0f8ff' }}>
+                    <th style={{ padding: '15px 12px', textAlign: 'left', borderBottom: '2px solid #2196f3', fontWeight: 'bold', color: '#333' }}>ID</th>
+                    <th style={{ padding: '15px 12px', textAlign: 'left', borderBottom: '2px solid #2196f3', fontWeight: 'bold', color: '#333' }}>Company Name</th>
+                    <th style={{ padding: '15px 12px', textAlign: 'left', borderBottom: '2px solid #2196f3', fontWeight: 'bold', color: '#333' }}>Email</th>
+                    <th style={{ padding: '15px 12px', textAlign: 'left', borderBottom: '2px solid #2196f3', fontWeight: 'bold', color: '#333' }}>Phone</th>
+                    <th style={{ padding: '15px 12px', textAlign: 'left', borderBottom: '2px solid #2196f3', fontWeight: 'bold', color: '#333' }}>Address</th>
+                    <th style={{ padding: '15px 12px', textAlign: 'center', borderBottom: '2px solid #2196f3', fontWeight: 'bold', color: '#333' }}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {companies.map((company, index) => (
+                    <tr
+                      key={company.id}
+                      style={{
+                        borderBottom: '1px solid #eee',
+                        backgroundColor: index % 2 === 0 ? '#fafafa' : '#ffffff',
+                        transition: 'background-color 0.2s'
+                      }}
+                      onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#f0f8ff'}
+                      onMouseOut={(e) => e.currentTarget.style.backgroundColor = index % 2 === 0 ? '#fafafa' : '#ffffff'}
+                    >
+                      <td style={{ padding: '15px 12px', fontWeight: 'bold', color: '#666' }}>{company.id}</td>
+                      <td style={{ padding: '15px 12px', fontWeight: 'bold', color: '#333' }}>{company.name}</td>
+                      <td style={{ padding: '15px 12px', color: '#555' }}>{company.email}</td>
+                      <td style={{ padding: '15px 12px', color: '#555' }}>{company.phone || '-'}</td>
+                      <td style={{ padding: '15px 12px', color: '#555', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {company.address || '-'}
+                      </td>
+                      <td style={{ padding: '15px 12px', textAlign: 'center' }}>
+                        <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', flexWrap: 'wrap' }}>
+                          <button
+                            onClick={() => handleEdit(company)}
+                            disabled={loading}
+                            style={{
+                              padding: '8px 16px',
+                              backgroundColor: '#ff9800',
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: '4px',
+                              cursor: loading ? 'not-allowed' : 'pointer',
+                              fontSize: '12px',
+                              fontWeight: 'bold',
+                              transition: 'background-color 0.3s'
+                            }}
+                            onMouseOver={(e) => !loading && (e.target.style.backgroundColor = '#f57c00')}
+                            onMouseOut={(e) => !loading && (e.target.style.backgroundColor = '#ff9800')}
+                          >
+                            ✏️ Edit
+                          </button>
+                          <button
+                            onClick={() => handleDelete(company.id)}
+                            disabled={loading}
+                            style={{
+                              padding: '8px 16px',
+                              backgroundColor: '#f44336',
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: '4px',
+                              cursor: loading ? 'not-allowed' : 'pointer',
+                              fontSize: '12px',
+                              fontWeight: 'bold',
+                              transition: 'background-color 0.3s'
+                            }}
+                            onMouseOver={(e) => !loading && (e.target.style.backgroundColor = '#d32f2f')}
+                            onMouseOut={(e) => !loading && (e.target.style.backgroundColor = '#f44336')}
+                          >
+                            🗑️ Delete
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Pagination */}
+            {pagination.totalPages > 1 && (
+              <div style={{
+                padding: '20px',
+                backgroundColor: '#f8f9fa',
+                borderTop: '1px solid #e0e0e0',
+                display: 'flex',
+                justifyContent: 'center',
+                alignItems: 'center',
+                gap: '10px',
+                flexWrap: 'wrap'
+              }}>
+                <button
+                  onClick={() => handlePageChange(0)}
+                  disabled={pagination.currentPage === 0 || loading}
+                  style={{
+                    padding: '8px 12px',
+                    backgroundColor: pagination.currentPage === 0 ? '#ccc' : '#2196f3',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: (pagination.currentPage === 0 || loading) ? 'not-allowed' : 'pointer',
+                    fontSize: '12px'
+                  }}
+                >
+                  ⏮️ First
+                </button>
+                <button
+                  onClick={() => handlePageChange(pagination.currentPage - 1)}
+                  disabled={pagination.currentPage === 0 || loading}
+                  style={{
+                    padding: '8px 12px',
+                    backgroundColor: pagination.currentPage === 0 ? '#ccc' : '#2196f3',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: (pagination.currentPage === 0 || loading) ? 'not-allowed' : 'pointer',
+                    fontSize: '12px'
+                  }}
+                >
+                  ⏪ Prev
+                </button>
+
+                <span style={{
+                  padding: '8px 16px',
+                  backgroundColor: '#fff',
+                  border: '1px solid #ddd',
+                  borderRadius: '4px',
+                  fontSize: '12px',
+                  fontWeight: 'bold'
+                }}>
+                  {pagination.currentPage + 1} / {pagination.totalPages}
+                </span>
+
+                <button
+                  onClick={() => handlePageChange(pagination.currentPage + 1)}
+                  disabled={pagination.currentPage >= pagination.totalPages - 1 || loading}
+                  style={{
+                    padding: '8px 12px',
+                    backgroundColor: (pagination.currentPage >= pagination.totalPages - 1) ? '#ccc' : '#2196f3',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: (pagination.currentPage >= pagination.totalPages - 1 || loading) ? 'not-allowed' : 'pointer',
+                    fontSize: '12px'
+                  }}
+                >
+                  Next ⏩
+                </button>
+                <button
+                  onClick={() => handlePageChange(pagination.totalPages - 1)}
+                  disabled={pagination.currentPage >= pagination.totalPages - 1 || loading}
+                  style={{
+                    padding: '8px 12px',
+                    backgroundColor: (pagination.currentPage >= pagination.totalPages - 1) ? '#ccc' : '#2196f3',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: (pagination.currentPage >= pagination.totalPages - 1 || loading) ? 'not-allowed' : 'pointer',
+                    fontSize: '12px'
+                  }}
+                >
+                  Last ⏭️
+                </button>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>

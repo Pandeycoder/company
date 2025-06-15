@@ -1,17 +1,15 @@
 package com.company.repo;
 
-import java.util.List;
-import java.util.Optional;
-
-import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Query;
-import org.springframework.data.repository.query.Param;
-
 import com.company.entity.Company;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable; // ✅ Correct import
+import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface CompanyRepo extends JpaRepository<Company, Long> {
-	    
-	List<Company> findByNameContaining(String name);
-    List<Company> findByEmail(String email);
-    
-	}
+
+    // Search by name with pagination
+    Page<Company> findByNameContaining(String name, Pageable pageable);
+
+    // Optional: Search by email with pagination
+    Page<Company> findByEmail(String email, Pageable pageable);
+}
