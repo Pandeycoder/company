@@ -2,7 +2,8 @@ name: Deploy to EC2
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
 
 jobs:
   deploy:
@@ -23,9 +24,20 @@ jobs:
       run: |
         ssh -o StrictHostKeyChecking=no ${{ secrets.USERNAME }}@${{ secrets.HOST }} << 'EOF'
           set -e
-          cd ${{ secrets.APP_DIR }}
+
           echo "🔁 Pulling latest code..."
+          cd ${{ secrets.APP_DIR }}
           git pull origin main
+
+          echo "🔨 Building Java backend..."
+          cd crud_Operation
+          ./mvnw clean package -DskipTests
+
+          echo "🛑 Stopping old Java process..."
+          pkill -f 'crud_Operation-0.0.1-SNAPSHOT.jar' || true
+
+          echo "🚀 Starting backend..."
+          nohup java -jar target/*-SNAPSHOT.jar > backend.log 2>&1 &
 
           echo "📦 Installing frontend dependencies..."
           cd ../client
@@ -34,5 +46,5 @@ jobs:
           echo "🛠 Building frontend..."
           sudo nohup npm run dev -- --host &
 
-          echo "✅ Fullstack App Deployed"
+          echo "✅ Fullstack Java + React app deployed!"
         EOF
