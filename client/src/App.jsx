@@ -267,7 +267,7 @@ function App() {
 
   return (
     <div style={{ padding: '20px', fontFamily: 'Arial, sans-serif', maxWidth: '1200px', margin: '0 auto' }}>
-      <h1 style={{ textAlign: 'center', color: '#333', marginBottom: '30px' }}>Company Management System</h1>
+      <h1 style={{ textAlign: 'center', color: '#333', marginBottom: '30px' }}>Company Management System...</h1>
 
       {error && (
         <div style={{
