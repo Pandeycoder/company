@@ -1,30 +1,40 @@
-...
-    - name: Deploy code to EC2
-      run: |
-        ssh -o StrictHostKeyChecking=no ${{ secrets.USERNAME }}@${{ secrets.HOST }} << 'EOF'
-          set -e
+name: Deploy to EC2
 
-          echo "🔁 Pulling latest code..."
-          cd ${{ secrets.APP_DIR }}
-          git pull origin main
+on:
+  push:
+    branches:
+      - main
 
-          echo "🔨 Building Java backend..."
-          cd crud_Operation
-          chmod +x mvnw     # 👈 Add this line to fix the permission error
-          ./mvnw clean package -DskipTests
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
 
-          echo "🛑 Stopping old Java process..."
-          pkill -f 'crud_Operation-0.0.1-SNAPSHOT.jar' || true
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-          echo "🚀 Starting backend..."
-          nohup java -jar target/*-SNAPSHOT.jar > backend.log 2>&1 &
+      - name: Set up SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.HOST }} >> ~/.ssh/known_hosts
 
-          echo "📦 Installing frontend dependencies..."
-          cd ../client
-          npm install
+      - name: Deploy to EC2
+        run: |
+          ssh -o StrictHostKeyChecking=no ${{ secrets.USERNAME }}@${{ secrets.HOST }} << 'EOF'
+            set -e
+            
+            echo "🔁 Pulling latest code..."
+            cd ${{ secrets.APP_DIR }}
+            git pull origin main
 
-          echo "🛠 Building frontend..."
-          npm run dev
+            echo "📦 Installing frontend dependencies..."
+            cd ../client
+            npm install
 
-          echo "✅ Fullstack Java + React app deployed!"
-        EOF
+            echo "🛠 Building frontend..."
+            npm run dev -- --host
+
+            echo "✅ Deployment complete!"
+          EOF
