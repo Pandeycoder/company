@@ -20,7 +20,7 @@ jobs:
         chmod 600 ~/.ssh/id_rsa
         ssh-keyscan -H ${{ secrets.HOST }} >> ~/.ssh/known_hosts
 
-    - name: Deploy frontend to EC2....
+    - name: Deploy frontend to EC2
       run: |
         ssh -o StrictHostKeyChecking=no ${{ secrets.USERNAME }}@${{ secrets.HOST }} << 'EOF'
           set -e
@@ -33,8 +33,11 @@ jobs:
           cd client
           npm install
 
-          echo "🛠 Building frontend..."
-          sudo nohup npm run dev -- --host & 
+          echo "🔫 Killing any existing process on port 4001..."
+          fuser -k 4001/tcp || true
 
-          echo "✅ Frontend deployed successfully!"
+          echo "🛠 Building frontend..."
+          nohup npm run dev -- --host 0.0.0.0 --port 4001 > frontend.log 2>&1 &
+
+          echo "✅ Frontend deployed successfully at http://${{ secrets.HOST }}:4001"
         EOF
