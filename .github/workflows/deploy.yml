@@ -1,4 +1,4 @@
-name: Deploy Fullstack App to AWS
+name: Deploy to EC2
 
 on:
   push:
@@ -20,15 +20,28 @@ jobs:
         chmod 600 ~/.ssh/id_rsa
         ssh-keyscan -H ${{ secrets.HOST }} >> ~/.ssh/known_hosts
 
-    - name: Deploy code on EC2
+    - name: Deploy code to EC2
       run: |
-        ssh ${{ secrets.USERNAME }}@${{ secrets.HOST }} << 'EOF'
+        ssh -o StrictHostKeyChecking=no ${{ secrets.USERNAME }}@${{ secrets.HOST }} << 'EOF'
+          set -e  # Fail script on error
+          
           cd ${{ secrets.APP_DIR }}
+          echo "🔁 Pulling latest code..."
           git pull origin main
 
-          # Frontend build (optional)
+          echo "📦 Installing backend dependencies..."
+          cd crud_Operation
+          npm install
+
+          echo "🚀 Starting backend..."
+          pkill -f "npm run dev" || true
+          nohup npm run dev -- --host 0.0.0.0 > backend.log 2>&1 &
+
+          echo "📦 Installing frontend dependencies..."
           cd ../client
           npm install
+
+          echo "🛠 Building frontend..."
           npm run build
 
           echo "✅ Fullstack App Deployed"
