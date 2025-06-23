@@ -10,31 +10,31 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+    - name: Checkout code
+      uses: actions/checkout@v3
 
-      - name: Set up SSH
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H ${{ secrets.HOST }} >> ~/.ssh/known_hosts
+    - name: Set up SSH
+      run: |
+        mkdir -p ~/.ssh
+        echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+        chmod 600 ~/.ssh/id_rsa
+        ssh-keyscan -H ${{ secrets.HOST }} >> ~/.ssh/known_hosts
 
-      - name: Deploy to EC2
-        run: |
-          ssh -o StrictHostKeyChecking=no ${{ secrets.USERNAME }}@${{ secrets.HOST }} << 'EOF'
-            set -e
-            
-            echo "🔁 Pulling latest code..."
-            cd ${{ secrets.APP_DIR }}
-            git pull origin main
+    - name: Deploy frontend to EC2
+      run: |
+        ssh -o StrictHostKeyChecking=no ${{ secrets.USERNAME }}@${{ secrets.HOST }} << 'EOF'
+          set -e
 
-            echo "📦 Installing frontend dependencies..."
-            cd ../client
-            npm install
+          echo "🔁 Pulling latest code..."
+          cd ${{ secrets.APP_DIR }}
+          git pull origin main
 
-            echo "🛠 Building frontend..."
-            npm run dev -- --host
+          echo "📦 Installing frontend dependencies..."
+          cd client
+          npm install
 
-            echo "✅ Deployment complete!"
-          EOF
+          echo "🛠 Building frontend..."
+          npm run build
+
+          echo "✅ Frontend deployed successfully!"
+        EOF
