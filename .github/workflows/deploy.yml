@@ -37,7 +37,7 @@ jobs:
           pkill -f 'crud_Operation-0.0.1-SNAPSHOT.jar' || true
 
           echo "🚀 Starting backend..."
-          nohup java -jar target/*-SNAPSHOT.jar > backend.log 2>&1 &
+          sudo nohup java -jar target/*-SNAPSHOT.jar &
 
           echo "📦 Installing frontend dependencies..."
           cd ../client
