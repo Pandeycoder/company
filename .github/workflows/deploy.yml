@@ -2,8 +2,7 @@ name: Deploy to EC2
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
 
 jobs:
   deploy:
@@ -23,8 +22,7 @@ jobs:
     - name: Deploy code to EC2
       run: |
         ssh -o StrictHostKeyChecking=no ${{ secrets.USERNAME }}@${{ secrets.HOST }} << 'EOF'
-          set -e  # Fail script on error
-          
+          set -e
           cd ${{ secrets.APP_DIR }}
           echo "🔁 Pulling latest code..."
           git pull origin main
@@ -32,8 +30,6 @@ jobs:
           echo "📦 Installing backend dependencies..."
           cd crud_Operation
           npm install
-
-          echo "🚀 Starting backend..."
           pkill -f "npm run dev" || true
           nohup npm run dev -- --host 0.0.0.0 > backend.log 2>&1 &
 
