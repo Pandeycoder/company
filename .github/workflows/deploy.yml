@@ -34,7 +34,7 @@ jobs:
           npm install
 
           echo "🛠 Building frontend..."
-          npm run build
+          sudo nohup npm run dev -- --host & 
 
           echo "✅ Frontend deployed successfully!"
         EOF
