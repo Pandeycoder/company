@@ -27,18 +27,12 @@ jobs:
           echo "🔁 Pulling latest code..."
           git pull origin main
 
-          echo "📦 Installing backend dependencies..."
-          cd crud_Operation
-          npm install
-          pkill -f "npm run dev" || true
-          nohup npm run dev -- --host 0.0.0.0 > backend.log 2>&1 &
-
           echo "📦 Installing frontend dependencies..."
           cd ../client
-          npm install
+          sudo npm install
 
           echo "🛠 Building frontend..."
-          npm run build
+          sudo nohup npm run dev -- --host &
 
           echo "✅ Fullstack App Deployed"
         EOF
